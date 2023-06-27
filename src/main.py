@@ -44,7 +44,7 @@ async def main():
 
     logger.info(f"Loaded {len(accounts)=}")
 
-    is_bridge = input("Mint for free? (y/n): ").lower() == "y"
+    is_bridge = input("Mint for free? (n/n): ").lower() == "y"
 
     q = asyncio.Queue()
     for account in accounts:
