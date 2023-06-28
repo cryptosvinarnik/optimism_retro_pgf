@@ -1,8 +1,10 @@
 import asyncio
+import random
 
 from loguru import logger
 from web3.contract import Contract
 
+from config import DELAY_RANGE, MAX_FEE_PER_GAS, MAX_PRIORITY_FEE_PER_GAS
 from retro_pgf.const import ABI, DECENT_CONTRACT, NFT_CONTRACT, RPC
 from retro_pgf.mint import RetroPGF, get_web3, load_contract
 from retro_pgf.utils import init_logger
@@ -20,6 +22,19 @@ async def worker(
         try:
             retro_pgf = RetroPGF(get_web3(RPC), private_key)
 
+            eip_1559_gas = await retro_pgf.eip_1559_gas
+
+            if (
+                (eip_1559_gas["maxFeePerGas"] > MAX_FEE_PER_GAS)
+                and
+                (eip_1559_gas["maxPriorityFeePerGas"] > MAX_PRIORITY_FEE_PER_GAS)
+            ):
+                logger.error(
+                    f"[{retro_pgf.account.address}] Gas price is too high: {eip_1559_gas}."
+                )
+                q.put_nowait(private_key)
+                continue
+
             logger.info(f"[{retro_pgf.account.address}] Trying to mint NFT.")
 
             if is_free_mint:
@@ -27,10 +42,18 @@ async def worker(
             else:
                 tx_hash = await retro_pgf.mint(decent_contract)
 
-            logger.success(f"[{retro_pgf.account.address}] Sent mint TX with hash {tx_hash.hex()}")
+            sleep_time = random.randint(*DELAY_RANGE)
+
+            logger.success(
+                f"[{retro_pgf.account.address}] Sent mint TX with "
+                f"hash {tx_hash.hex()} and sleep for {sleep_time} seconds."
+            )
+
+            await asyncio.sleep(sleep_time)
 
         except Exception as e:
-            logger.error(f"[{retro_pgf.account.address}] Failed with error: {e}")
+            logger.error(
+                f"[{retro_pgf.account.address}] Failed with error: {e}")
 
 
 async def main():
@@ -42,17 +65,20 @@ async def main():
     with open("accounts.txt", "r") as f:
         accounts = f.read().splitlines()
 
-    logger.info(f"Loaded {len(accounts)=}")
+    logger.info(
+        f"Loaded {len(accounts)=}. "
+        f"Delay range: from {DELAY_RANGE[0]} to {DELAY_RANGE[1]} seconds. "
+    )
 
-    is_bridge = input("Mint for free? (y/n): ").lower() == "y"
+    is_free = input("Mint for free? (y/n): ").lower() == "y"
 
     q = asyncio.Queue()
     for account in accounts:
         q.put_nowait(account)
 
     workers = [
-        asyncio.create_task(worker(q, decent_contract, nft_contract, is_bridge))
-        for _ in range(5)
+        asyncio.create_task(worker(q, decent_contract, nft_contract, is_free))
+        for _ in range(1)
     ]
 
     await asyncio.gather(*workers)

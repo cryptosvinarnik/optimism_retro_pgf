@@ -57,11 +57,17 @@ class Web3Wrapper:
         signed_tx = self.account.sign_transaction(tx_params)
 
         return await self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-
-
+    
     @property
-    async def upped_gas_price(self) -> int:
-        return int((await self.web3.eth.gas_price) * 1.2)
+    async def eip_1559_gas(self) -> dict:
+        base_fee = await self.web3.eth.gas_price
+
+        max_priority_fee = await self.web3.eth.max_priority_fee
+
+        return {
+            "maxFeePerGas": max_priority_fee + base_fee * 2, 
+            "maxPriorityFeePerGas": max_priority_fee
+        }
 
 
 class RetroPGF(Web3Wrapper):
@@ -84,7 +90,7 @@ class RetroPGF(Web3Wrapper):
             "to": nft_contract.address,
             "data": data,
             "value": 0,
-            "gasPrice": await self.upped_gas_price,
+            **(await self.eip_1559_gas)
         })
     
     async def mint(self, decent_contract: Contract) -> HexBytes:
@@ -112,5 +118,5 @@ class RetroPGF(Web3Wrapper):
             "to": decent_contract.address,
             "data": data,
             "value": DECENT_MINT_PRICE,
-            "gasPrice": await self.upped_gas_price,
+            **(await self.eip_1559_gas)
         })
